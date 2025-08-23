@@ -8,12 +8,13 @@ const FIELD_HEIGHT: u8 = 10;
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 enum GameState {
-    // Loading,
     #[default]
+    AssetsLoading,
     InGame,
     GameOver,
 }
 
+mod assets_loader;
 mod game_over;
 mod snake;
 
@@ -35,38 +36,9 @@ struct Food;
 #[derive(Component)]
 struct FpsText;
 
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Snake".to_string(),
-                resolution: (800.0, 600.0).into(),
-                ..default()
-            }),
-            ..default()
-        }))
-        .add_plugins(snake::SnakePlugin)
-        .add_plugins(game_over::GameOverPlugin)
-        .init_state::<GameState>()
-        .init_resource::<Score>()
-        .add_systems(Startup, setup)
-        .add_systems(OnEnter(GameState::InGame), reset_score)
-        .add_systems(
-            Update,
-            (check_border_collision, check_food_collision)
-                .chain()
-                .run_if(in_state(GameState::InGame)),
-        )
-        .add_systems(Update, update_fps)
-        .run();
-}
-
 fn setup(mut commands: Commands) {
-    // // Score
-    // commands.insert_resource(Score(0));
-
-    // Camera
-    commands.spawn(Camera2d);
+    // Camera with 4x pixel scaling
+    commands.spawn((Camera2d, Transform::from_scale(Vec3::splat(0.25))));
 
     // FPS Text
     commands.spawn((
@@ -90,12 +62,12 @@ fn setup(mut commands: Commands) {
 
     // Food
     let position = Position { x: 3, y: 3 };
-    let screen_position = grid_to_screen_position(&position);
+    let screen_position = grid_to_screen_transform(&position);
     commands.spawn((
         Food,
         Sprite {
             color: Color::srgb(0.8, 0.3, 0.3),
-            custom_size: Some(Vec2::new(32.0, 32.0)),
+            custom_size: Some(Vec2::new(8.0, 8.0)),
             ..default()
         },
         position,
@@ -103,8 +75,12 @@ fn setup(mut commands: Commands) {
     ));
 }
 
-fn grid_to_screen_position(position: &Position) -> Transform {
-    Transform::from_xyz(position.x as f32 * 32.0, position.y as f32 * 32.0, 0.0)
+fn grid_to_screen_position(position: &Position) -> Vec3 {
+    grid_to_screen_transform(position).translation
+}
+
+fn grid_to_screen_transform(position: &Position) -> Transform {
+    Transform::from_xyz(position.x as f32 * 8.0, position.y as f32 * 8.0, 0.0)
 }
 
 fn update_fps(time: Res<Time>, mut fps_query: Query<&mut Text, With<FpsText>>) {
@@ -141,9 +117,9 @@ fn check_food_collision(
                 food_pos.x = rand::rng().random_range(0..FIELD_WIDTH as i8);
                 food_pos.y = rand::rng().random_range(0..FIELD_HEIGHT as i8);
 
-                food_transform.translation = grid_to_screen_position(&food_pos).translation;
+                food_transform.translation = grid_to_screen_position(&food_pos);
 
-                // snake_ate.0 = true;
+                snake_ate.0 = true;
 
                 score.0 += 1;
                 println!("Score: {}", score.0);
@@ -167,14 +143,14 @@ fn spawn_border(commands: &mut Commands) {
             x: x as i8 - 1,
             y: y as i8 - 1,
         };
-        let screen_pos = grid_to_screen_position(&pos);
+        let screen_pos = grid_to_screen_transform(&pos);
         commands.spawn((
             BorderSegment,
             pos,
             screen_pos,
             Sprite {
                 color: Color::srgb(0.6, 0.6, 0.6),
-                custom_size: Some(Vec2::new(31.0, 31.0)),
+                custom_size: Some(Vec2::new(8.0, 8.0)),
                 ..default()
             },
         ));
@@ -183,4 +159,36 @@ fn spawn_border(commands: &mut Commands) {
 
 fn reset_score(mut score: ResMut<Score>) {
     score.0 = 0;
+}
+
+fn main() {
+    App::new()
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Snake".to_string(),
+                        resolution: (800.0, 600.0).into(),
+
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(ImagePlugin::default_nearest()),
+        )
+        .add_plugins(assets_loader::AssetsLoaderPlugin)
+        .add_plugins(snake::SnakePlugin)
+        .add_plugins(game_over::GameOverPlugin)
+        .init_state::<GameState>()
+        .init_resource::<Score>()
+        .add_systems(Startup, setup)
+        .add_systems(OnEnter(GameState::InGame), reset_score)
+        .add_systems(
+            Update,
+            (check_border_collision, check_food_collision)
+                .chain()
+                .run_if(in_state(GameState::InGame)),
+        )
+        .add_systems(Update, update_fps)
+        .run();
 }
