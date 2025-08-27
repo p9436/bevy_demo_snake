@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-// use rand::Rng;
 
 use crate::{
     GameState, Position, assets_loader::GameAssets, grid_to_screen_position,
@@ -25,7 +24,7 @@ pub struct Ate(pub bool);
 #[derive(Resource)]
 struct Timer(f32);
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 enum Dir {
     Up,
     Right,
@@ -39,7 +38,149 @@ struct Direction(Dir);
 #[derive(Component)]
 struct LastDirection(Dir);
 
-//
+// Enum to represent different types of body segments
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SegmentType {
+    // Straight segments
+    Horizontal, // Left-Right or Right-Left
+    Vertical,   // Up-Down or Down-Up
+
+    // Corner segments (turn from one direction to another)
+    CornerRightUp,   // From Right to Up
+    CornerDownRight, // From Down to Right
+    CornerLeftDown,  // From Left to Down
+    CornerUpLeft,    // From Up to Left
+
+    // Tail segment (last segment of the snake)
+    TailUp,
+    TailRight,
+    TailDown,
+    TailLeft,
+
+    // Fallback
+    None,
+}
+
+impl SegmentType {
+    // Map segment types to sprite atlas indices
+    fn to_atlas_index(self) -> usize {
+        match self {
+            SegmentType::Horizontal => 4,      // Horizontal straight segment
+            SegmentType::Vertical => 5,        // Vertical straight segment
+            SegmentType::CornerDownRight => 8, //
+            SegmentType::CornerLeftDown => 9,  //
+            SegmentType::CornerUpLeft => 13,   //
+            SegmentType::CornerRightUp => 12,  //
+            SegmentType::TailRight => 11,
+            SegmentType::TailDown => 14,
+            SegmentType::TailLeft => 15,
+            SegmentType::TailUp => 10,
+            SegmentType::None => 7,
+        }
+    }
+}
+
+// Helper function to get direction between two positions
+fn get_direction_between_positions(from: &Position, to: &Position) -> Option<Dir> {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+
+    // println!("dx, dy: {:?},{:?}", dx, dy);
+
+    match (dx, dy) {
+        (1, 0) => Some(Dir::Right),
+        (-1, 0) => Some(Dir::Left),
+        (0, 1) => Some(Dir::Up),
+        (0, -1) => Some(Dir::Down),
+        _ => None, // Not adjacent or diagonal
+    }
+}
+
+// Function to determine what type of segment this should be
+fn determine_segment_type(
+    prev_pos: &Position,
+    current_pos: &Position,
+    next_pos: &Position,
+) -> SegmentType {
+    let direction_from_prev = get_direction_between_positions(prev_pos, current_pos);
+    let direction_to_next = get_direction_between_positions(current_pos, next_pos);
+
+    // Convert to CONNECTION directions (what directions the current segment connects to)
+    let incoming_connection = match direction_from_prev {
+        Some(Dir::Up) => Some(Dir::Down), // If prev is above, connection comes from Up
+        Some(Dir::Down) => Some(Dir::Up), // If prev is below, connection comes from Down
+        Some(Dir::Left) => Some(Dir::Right), // If prev is left, connection comes from Left
+        Some(Dir::Right) => Some(Dir::Left), // If prev is right, connection comes from Right
+        None => None,
+    };
+
+    let outgoing_connection = direction_to_next; // This one is correct as-is
+
+    // println!(
+    // "prev: {:?} -> curr: {:?} -> next: {:?}",
+    // prev_pos, current_pos, next_pos
+    // );
+    // println!(
+    // "dir_from_prev: {:?}, dir_to_next: {:?}",
+    // direction_from_prev, direction_to_next
+    // );
+
+    match (incoming_connection, outgoing_connection) {
+        (Some(Dir::Left), Some(Dir::Left)) | (Some(Dir::Right), Some(Dir::Right)) => {
+            SegmentType::Horizontal
+        }
+        (Some(Dir::Up), Some(Dir::Up)) | (Some(Dir::Down), Some(Dir::Down)) => {
+            SegmentType::Vertical
+        }
+
+        // Straight segments - OPPOSITE DIRECTIONS (less common, but possible)
+        (Some(Dir::Left), Some(Dir::Right)) | (Some(Dir::Right), Some(Dir::Left)) => {
+            SegmentType::Horizontal
+        }
+        (Some(Dir::Up), Some(Dir::Down)) | (Some(Dir::Down), Some(Dir::Up)) => {
+            SegmentType::Vertical
+        }
+
+        //
+        (Some(Dir::Down), Some(Dir::Right)) => SegmentType::CornerDownRight,
+        (Some(Dir::Left), Some(Dir::Down)) => SegmentType::CornerLeftDown,
+        (Some(Dir::Up), Some(Dir::Left)) => SegmentType::CornerUpLeft,
+        (Some(Dir::Right), Some(Dir::Up)) => SegmentType::CornerRightUp,
+        //
+        (Some(Dir::Right), Some(Dir::Down)) => SegmentType::CornerDownRight,
+        (Some(Dir::Down), Some(Dir::Left)) => SegmentType::CornerLeftDown,
+        (Some(Dir::Left), Some(Dir::Up)) => SegmentType::CornerUpLeft,
+        (Some(Dir::Up), Some(Dir::Right)) => SegmentType::CornerRightUp,
+
+        // Fallback to straight segments if we can't determine corner
+        _ => {
+            // println!(
+            // "Fallback case reached for: {:?} -> {:?}",
+            // direction_from_prev, direction_to_next
+            // );
+            SegmentType::None
+        }
+    }
+}
+
+fn determine_tail_type(prev_pos: &Position, tail_pos: &Position) -> SegmentType {
+    let direction_to_next = get_direction_between_positions(prev_pos, tail_pos);
+
+    // println!("prev: {:?} -> tail: {:?}", prev_pos, tail_pos);
+
+    match direction_to_next {
+        Some(Dir::Left) => SegmentType::TailLeft,
+        Some(Dir::Right) => SegmentType::TailRight,
+        Some(Dir::Up) => SegmentType::TailUp,
+        Some(Dir::Down) => SegmentType::TailDown,
+
+        // Fallback to straight segments if we can't determine corner
+        _ => {
+            // println!("Fallback case reached for: {:?} ", direction_to_next);
+            SegmentType::None
+        }
+    }
+}
 
 impl Plugin for SnakePlugin {
     fn build(&self, app: &mut App) {
@@ -77,10 +218,10 @@ fn spawn_head(
     commands.spawn((
         Head,
         Sprite {
-            image: game_assets.snake_texture.clone(),
+            image: game_assets.texture.clone(),
             texture_atlas: Some(TextureAtlas {
-                layout: game_assets.snake_texture_atlas_layout.clone(),
-                index: 0,
+                layout: game_assets.texture_atlas_layout.clone(),
+                index: 1,
                 ..default()
             }),
             ..default()
@@ -109,11 +250,11 @@ fn despawn_snake(
 
 fn init_snake(mut commands: Commands, game_assets: Res<GameAssets>) {
     // BodySegment
-    let position = Position { x: 4, y: 5 };
-    let initial_body_segment = spawn_body_segment(&mut commands, &position);
+    let position = Position { x: 0, y: 0 };
+    let initial_body_segment = spawn_body_segment(&mut commands, &position, &game_assets);
 
     // Head
-    let position = Position { x: 5, y: 5 };
+    let position = Position { x: 1, y: 0 };
     spawn_head(&mut commands, &position, initial_body_segment, game_assets);
 }
 
@@ -151,6 +292,7 @@ fn movements(
     timer: Res<Timer>,
     mut head_query: Query<
         (
+            Entity,
             &mut Position,
             &mut Sprite,
             &mut Transform,
@@ -165,53 +307,58 @@ fn movements(
         (Entity, &mut Position, &mut Transform, Option<&NextSegment>),
         (With<BodySegment>, Without<Head>),
     >,
+    game_assets: Res<GameAssets>,
 ) {
     if timer.0 > 0.0 {
         return;
     }
 
     if let Ok((
-        mut head_position,
-        mut head_sprite,
+        head_entity,
+        mut head_pos,
+        mut sprite,
         mut head_transform,
         mut head_last_direction,
-        mut head_ate,
+        mut snake_ate,
         head_direction,
         head_next_segment,
     )) = head_query.single_mut()
     {
-        let prev_head_pos = *head_position;
+        let prev_head_pos = *head_pos;
 
+        // Update head sprite and position
         match head_direction.0 {
             Dir::Left => {
-                if let Some(ref mut atlas) = head_sprite.texture_atlas {
+                if let Some(ref mut atlas) = sprite.texture_atlas {
                     atlas.index = 3;
                 }
-                head_position.x -= 1;
+                head_pos.x -= 1;
             }
             Dir::Right => {
-                if let Some(ref mut atlas) = head_sprite.texture_atlas {
+                if let Some(ref mut atlas) = sprite.texture_atlas {
                     atlas.index = 1;
                 }
-                head_position.x += 1;
+                head_pos.x += 1;
             }
             Dir::Up => {
-                if let Some(ref mut atlas) = head_sprite.texture_atlas {
+                if let Some(ref mut atlas) = sprite.texture_atlas {
                     atlas.index = 0;
                 }
-                head_position.y += 1;
+                head_pos.y += 1;
             }
             Dir::Down => {
-                if let Some(ref mut atlas) = head_sprite.texture_atlas {
+                if let Some(ref mut atlas) = sprite.texture_atlas {
                     atlas.index = 2;
                 }
-                head_position.y -= 1;
+                head_pos.y -= 1;
             }
         }
 
         head_last_direction.0 = head_direction.0;
 
-        head_transform.translation = grid_to_screen_position(&head_position);
+        head_transform.translation = grid_to_screen_position(&head_pos);
+
+        let mut ordered_segments = vec![(head_entity, *head_pos)];
 
         let mut current_segment_id = head_next_segment.0;
         let mut prev_pos = prev_head_pos;
@@ -225,11 +372,11 @@ fn movements(
                 *segment_pos = prev_pos;
                 segment_transform.translation = grid_to_screen_position(&segment_pos);
                 prev_pos = old_segment_pos;
+                ordered_segments.push((current_segment_id, *segment_pos));
 
                 if let Some(next) = next_segment {
                     current_segment_id = next.0;
                 } else {
-                    // We've reached the end of the snake.
                     last_segment_entity = Some(entity);
                     break;
                 }
@@ -238,17 +385,63 @@ fn movements(
             }
         }
 
-        if head_ate.0 {
+        if snake_ate.0 {
             if let Some(last_entity) = last_segment_entity {
-                head_ate.0 = false;
+                snake_ate.0 = false;
 
                 let new_segment_pos = prev_pos;
-                let new_segment_entity = spawn_body_segment(&mut commands, &new_segment_pos);
+                let new_segment_entity =
+                    spawn_body_segment(&mut commands, &new_segment_pos, &game_assets);
 
                 commands
                     .entity(last_entity)
                     .insert(NextSegment(new_segment_entity));
+
+                ordered_segments.push((new_segment_entity, new_segment_pos));
             }
+        }
+
+        // println!("------------");
+        // println!("{:?}", ordered_segments);
+
+        let len = ordered_segments.len();
+        if len >= 3 {
+            for idx in 1..len - 1 {
+                let prev = ordered_segments[idx - 1];
+                let next = ordered_segments[idx + 1];
+                let curr = ordered_segments[idx];
+
+                let segment_type = determine_segment_type(&prev.1, &curr.1, &next.1);
+                let atlas_index = segment_type.to_atlas_index();
+
+                let mut entity_commands = commands.entity(curr.0);
+                entity_commands.queue(move |mut entity: EntityWorldMut| {
+                    // Check if the component exists on the entity.
+                    if let Some(mut sprite) = entity.get_mut::<Sprite>() {
+                        if let Some(ref mut atlas) = sprite.texture_atlas {
+                            atlas.index = atlas_index;
+                        }
+                    }
+                });
+            }
+        }
+
+        if len >= 2 {
+            let prev = ordered_segments[len - 2];
+            let tail = ordered_segments[len - 1];
+
+            let segment_type = determine_tail_type(&prev.1, &tail.1);
+            let atlas_index = segment_type.to_atlas_index();
+
+            let mut entity_commands = commands.entity(tail.0);
+            entity_commands.queue(move |mut entity: EntityWorldMut| {
+                // Check if the component exists on the entity.
+                if let Some(mut sprite) = entity.get_mut::<Sprite>() {
+                    if let Some(ref mut atlas) = sprite.texture_atlas {
+                        atlas.index = atlas_index;
+                    }
+                }
+            });
         }
     }
 }
@@ -269,8 +462,11 @@ fn check_self_collision(
     }
 }
 
-//
-fn spawn_body_segment(commands: &mut Commands, position: &Position) -> Entity {
+fn spawn_body_segment(
+    commands: &mut Commands,
+    position: &Position,
+    game_assets: &Res<GameAssets>,
+) -> Entity {
     let new_screen_position = grid_to_screen_transform(position);
     let new_segment_entity = commands
         .spawn((
@@ -278,8 +474,12 @@ fn spawn_body_segment(commands: &mut Commands, position: &Position) -> Entity {
             *position,
             new_screen_position,
             Sprite {
-                color: Color::srgb(0.3, 0.8, 0.3),
-                custom_size: Some(Vec2::new(8.0, 8.0)),
+                image: game_assets.texture.clone(),
+                texture_atlas: Some(TextureAtlas {
+                    layout: game_assets.texture_atlas_layout.clone(),
+                    index: 15, // Tail segment
+                    ..default()
+                }),
                 ..default()
             },
         ))

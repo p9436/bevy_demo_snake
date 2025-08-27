@@ -1,4 +1,3 @@
-use bevy::asset::LoadState;
 use bevy::prelude::*;
 
 use crate::GameState;
@@ -13,8 +12,8 @@ impl Plugin for AssetsLoaderPlugin {
 
 #[derive(Resource)]
 pub struct GameAssets {
-    pub snake_texture_atlas_layout: Handle<TextureAtlasLayout>,
-    pub snake_texture: Handle<Image>,
+    pub texture_atlas_layout: Handle<TextureAtlasLayout>,
+    pub texture: Handle<Image>,
 }
 
 fn load_game_assets(
@@ -26,15 +25,15 @@ fn load_game_assets(
     // Завантажуємо текстуру спрайтового аркуша.
     let texture = asset_server.load("snake.png");
 
-    // Визначаємо макет спрайтового аркуша: клітинки 8x8 пікселі, 4 стовпців, 4 рядки.
-    let layout = TextureAtlasLayout::from_grid(UVec2::splat(8), 4, 4, None, None);
+    // Визначаємо макет спрайтового аркуша: клітинки 8x8 пікселі, 4 стовпців, 5 рядків.
+    let layout = TextureAtlasLayout::from_grid(UVec2::splat(8), 4, 5, None, None);
     // Додаємо макет до сервера ресурсів та отримуємо його Handle.
     let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
     // Вставляємо ресурс GameAssets у світ, щоб інші системи могли до нього отримати доступ.
     commands.insert_resource(GameAssets {
-        snake_texture_atlas_layout: texture_atlas_layout,
-        snake_texture: texture,
+        texture_atlas_layout,
+        texture,
     });
 
     next_state.set(GameState::InGame);
