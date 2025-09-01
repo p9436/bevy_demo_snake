@@ -21,7 +21,7 @@ fn handle_inputs(
     mut game_state: ResMut<NextState<GameState>>,
 ) {
     if keyboard_input.pressed(KeyCode::KeyR) {
-        game_state.set(GameState::InGame);
+        game_state.set(GameState::StartGame);
     }
 }
 
@@ -30,7 +30,7 @@ fn init_game_over(mut commands: Commands) {
         Text::new(format!("GAME OVER\nScore: {}\nPress R to restart", 0)),
         TextLayout::new_with_justify(JustifyText::Center),
         TextFont {
-            font_size: 48.0,
+            font_size: 32.0,
             ..default()
         },
         TextColor(Color::srgb(1.0, 0.0, 0.0)),
@@ -39,6 +39,7 @@ fn init_game_over(mut commands: Commands) {
             position_type: PositionType::Absolute,
             width: Val::Percent(100.0),
             height: Val::Percent(100.0),
+            top: Val::Percent(50.0),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             ..default()

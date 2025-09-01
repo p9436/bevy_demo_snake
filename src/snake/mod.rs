@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::{
-    GameState, Position, assets_loader::GameAssets, grid_to_screen_position,
+    GameState, Position, Score, assets_loader::GameAssets, grid_to_screen_position,
     grid_to_screen_transform,
 };
 
@@ -186,7 +186,7 @@ impl Plugin for SnakePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, startup);
 
-        app.add_systems(OnEnter(GameState::InGame), (despawn_snake, init_snake));
+        app.add_systems(OnEnter(GameState::StartGame), (despawn_snake, init_snake));
 
         app.add_systems(
             Update,
@@ -262,9 +262,9 @@ fn update_timer(time: Res<Time>, mut timer: ResMut<Timer>) {
     timer.0 -= time.delta_secs();
 }
 
-fn reset_timer(mut timer: ResMut<Timer>) {
+fn reset_timer(mut timer: ResMut<Timer>, score: Res<Score>) {
     if timer.0 < 0.0 {
-        timer.0 = TIMER_TURN_DELAY;
+        timer.0 = TIMER_TURN_DELAY - (score.0 as f32 / 20.0);
     }
 }
 

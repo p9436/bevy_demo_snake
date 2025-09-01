@@ -19,12 +19,15 @@ const TILE_SIZE: f32 = 8.0;
 enum GameState {
     #[default]
     AssetsLoading,
+    StartGame,
     InGame,
+    Paused,
     GameOver,
 }
 
 mod assets_loader;
 mod game_over;
+mod pause;
 mod snake;
 
 #[derive(Debug, Component, Clone, Copy)]
@@ -74,7 +77,7 @@ fn setup(mut commands: Commands) {
     ));
 
     let world_pos = Vec3::new(
-        FIELD_FROM.0 as f32 * TILE_SIZE,
+        FIELD_FROM.0 as f32 * TILE_SIZE + TILE_SIZE,
         FIELD_TO.1 as f32 * TILE_SIZE + TILE_SIZE * 2.0,
         1.0, // A z-value to ensure the text is rendered on top of other sprites.
     );
@@ -83,7 +86,7 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Text2d::new("Score: 0"),
         TextFont {
-            font_size: 4.0, // Larger font size to compensate for camera scaling
+            font_size: 8.0, // Larger font size to compensate for camera scaling
             ..default()
         },
         TextColor(Color::srgb(1.0, 1.0, 1.0)),
@@ -143,9 +146,7 @@ fn check_food_collision(
                 score.0 += 1;
                 println!("Score: {}", score.0);
 
-                if let Ok(mut score_text) = score_text_query.single_mut() {
-                    score_text.0 = format!("Score: {}", score.0);
-                }
+                update_score_text(score.0, &mut score_text_query);
             }
         }
     }
@@ -206,8 +207,14 @@ fn spawn_borders(mut commands: Commands, game_assets: Res<GameAssets>) {
     });
 }
 
-fn reset_score(mut score: ResMut<Score>) {
+fn reset_score(
+    mut score: ResMut<Score>,
+    mut score_text_query: Query<&mut Text2d, With<ScoreText>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
     score.0 = 0;
+    update_score_text(score.0, &mut score_text_query);
+    next_state.set(GameState::InGame);
 }
 
 fn setup_tilemap_simple(
@@ -317,6 +324,12 @@ fn create_tilemap_mesh(
     println!("Tilemap created successfully!");
 }
 
+fn update_score_text(score: usize, score_text_query: &mut Query<&mut Text2d, With<ScoreText>>) {
+    if let Ok(mut score_text) = score_text_query.single_mut() {
+        score_text.0 = format!("Score: {}", score);
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins(
@@ -334,6 +347,7 @@ fn main() {
         )
         .add_plugins(assets_loader::AssetsLoaderPlugin)
         .add_plugins(snake::SnakePlugin)
+        .add_plugins(pause::GamePausePlugin)
         .add_plugins(game_over::GameOverPlugin)
         .init_state::<GameState>()
         .init_resource::<Score>()
@@ -342,7 +356,7 @@ fn main() {
             PostStartup,
             (setup_tilemap_simple, spawn_borders, spawn_food).chain(),
         )
-        .add_systems(OnEnter(GameState::InGame), reset_score)
+        .add_systems(OnEnter(GameState::StartGame), reset_score)
         .add_systems(
             Update,
             (check_border_collision, check_food_collision)

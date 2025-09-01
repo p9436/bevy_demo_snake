@@ -36,5 +36,5 @@ fn load_game_assets(
         texture,
     });
 
-    next_state.set(GameState::InGame);
+    next_state.set(GameState::StartGame);
 }
